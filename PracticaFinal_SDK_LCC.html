@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prueba Final</title>
+  <style>
+    html, body, #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    } 
+</style>
+  
+  <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/dark/main.css">
+  <script src="https://js.arcgis.com/4.28/"></script>
+
+  <script defer>
+   require([
+  "esri/Map",
+  "esri/views/MapView",
+  "esri/layers/FeatureLayer",
+  "esri/widgets/LayerList",
+  "esri/widgets/Sketch",
+  "esri/Graphic",
+  "esri/layers/GraphicsLayer",
+  "esri/rest/query"
+], function (Map, MapView, FeatureLayer, LayerList, Sketch, Graphic, GraphicsLayer, query) {
+  
+  const map = new Map({
+    basemap: "satellite"
+  });
+
+  const view = new MapView({
+    container: "viewDiv",
+    map: map,
+    center: [-3.7038, 40.4168],
+    zoom: 6
+  });
+
+  const redNaturaLayer = new FeatureLayer({
+    url: "https://services1.arcgis.com/nCKYwcSONQTkPA4K/ArcGIS/rest/services/Red_Natura_2000/FeatureServer/0",
+    renderer: {
+      type: "unique-value",
+      field: "Tipo",
+      uniqueValueInfos: [
+        { value: "LIC", symbol: { type: "simple-fill", color: "#cbf3f0", opacity: 0.8 } },
+        { value: "ZEPA", symbol: { type: "simple-fill", color: "#ffbf69", opacity: 0.8 } }
+      ]
+    }
+  });
+
+  const playasLayer = new FeatureLayer({
+    url: "https://services1.arcgis.com/nCKYwcSONQTkPA4K/ArcGIS/rest/services/Playas_2015/FeatureServer/0",
+    popupTemplate: {
+      title: "{Nombre}",
+      content: "<b>Descripción de la playa:</b> {Descripci} <br> <b>Longitud de la playa:</b> {Longitud} m <br> <b>Anchura de la playa:</b> {Anchura} m <br> <b>Condiciones de la playa:</b> {Condicione}"
+    },
+    effect: "bloom(2, 0.5px,0.0)"
+  });
+
+  map.addMany([redNaturaLayer, playasLayer]);
+
+  const layerList = new LayerList({
+    view: view,
+    container: document.createElement("div")
+  });
+  view.ui.add(layerList, "bottom-left");
+
+  const sketchLayer = new GraphicsLayer();
+  map.add(sketchLayer);
+
+  const sketch = new Sketch({
+    layer: sketchLayer,
+    view: view
+  });
+  view.ui.add(sketch, "top-right");
+
+  // Consulta para filtrar playas con submarinismo y cambiar simbología
+  playasLayer.when(() => {
+    const queryTask = playasLayer.createQuery();
+    queryTask.where = "Submarinis = 'Sí'";
+    queryTask.returnGeometry = true;
+    queryTask.outFields = ["Nombre"];
+
+    playasLayer.queryFeatures(queryTask).then((response) => {
+      response.features.forEach((feature) => {
+        feature.symbol = {
+          type: "picture-marker",
+          url: "https://cdn-icons-png.flaticon.com/512/3284/3284658.png",
+          width: "45px",
+          height: "45px"
+        };
+        sketchLayer.add(feature);
+      });
+    });
+  });
+
+  // Cambiar simbología en intersección con el polígono de Sketch
+  sketch.on("create", (event) => {
+    if (event.state === "complete") {
+      const sketchGraphic = event.graphic;
+      const queryTask = redNaturaLayer.createQuery();
+      queryTask.geometry = sketchGraphic.geometry;
+      queryTask.spatialRelationship = "intersects";
+      queryTask.returnGeometry = true;
+      
+      redNaturaLayer.queryFeatures(queryTask).then((response) => {
+        response.features.forEach((feature) => {
+          feature.symbol = {
+            type: "simple-fill",
+            color: "#0095ff",
+            opacity: 0.6,
+            outline: { color: "#000000", width: 2 }
+          };
+          sketchLayer.add(feature);
+        });
+      });
+    }
+  });
+});
+</script>
+
+</head>
+
+<body>
+    <div id="viewDiv"></div>
+</body>
+</html>
